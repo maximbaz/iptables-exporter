@@ -16,4 +16,4 @@ COPY --from=builder /usr/src/iptables-exporter/target/x86_64-unknown-linux-musl/
 RUN apk update && apk add iptables
 
 EXPOSE 9119
-CMD ["/iptables-exporter"]
+ENTRYPOINT ["/iptables-exporter"]
