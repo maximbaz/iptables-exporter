@@ -1,5 +1,4 @@
 use clap::{App, Arg};
-use enum_iterator::IntoEnumIterator;
 use itertools::iproduct;
 use itertools::Itertools;
 use lazy_static::lazy_static;
@@ -8,15 +7,18 @@ use std::collections::HashMap;
 use std::fmt;
 use std::net::SocketAddr;
 use std::process::Command;
+use strum::IntoEnumIterator;
+use strum_macros::{Display, EnumIter};
 use warp::Filter;
 
-#[derive(Clone, IntoEnumIterator)]
+#[derive(Clone, EnumIter)]
 enum IP {
     IPv4,
     IPv6,
 }
 
-#[derive(Debug, Clone, IntoEnumIterator)]
+#[derive(Clone, EnumIter, Display)]
+#[strum(serialize_all = "snake_case")]
 enum Table {
     Filter,
     Mangle,
@@ -31,12 +33,6 @@ impl fmt::Display for IP {
             IP::IPv4 => write!(f, "4"),
             IP::IPv6 => write!(f, "6"),
         }
-    }
-}
-
-impl fmt::Display for Table {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", format!("{:?}", self).to_string().to_lowercase())
     }
 }
 
@@ -84,7 +80,7 @@ async fn main() {
 }
 
 fn metrics_endpoint() -> String {
-    iproduct!(IP::into_enum_iter(), Table::into_enum_iter())
+    iproduct!(IP::iter(), Table::iter())
         .map(|(ip, table)| format_metrics(&ip, parse_stats(collect_stats(&ip, &table))))
         .join("\n")
 }
