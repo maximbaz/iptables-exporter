@@ -13,7 +13,7 @@ RUN cargo build --release --locked --target x86_64-unknown-linux-musl
 
 FROM alpine:latest
 COPY --from=builder /usr/src/iptables-exporter/target/x86_64-unknown-linux-musl/release/iptables-exporter /
-RUN apk update && apk add iptables
+RUN apk update && apk add iptables ip6tables
 
 EXPOSE 9119
 ENTRYPOINT ["/iptables-exporter"]
