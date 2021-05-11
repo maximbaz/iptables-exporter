@@ -16,14 +16,13 @@ enum IP {
     IPv6,
 }
 
-#[allow(non_camel_case_types)]
-#[derive(Clone, IntoEnumIterator)]
+#[derive(Debug, Clone, IntoEnumIterator)]
 enum Table {
-    filter,
-    mangle,
-    nat,
-    raw,
-    security,
+    Filter,
+    Mangle,
+    Nat,
+    Raw,
+    Security,
 }
 
 impl fmt::Display for IP {
@@ -37,7 +36,7 @@ impl fmt::Display for IP {
 
 impl fmt::Display for Table {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self)
+        write!(f, "{}", format!("{:?}", self).to_string().to_lowercase())
     }
 }
 
