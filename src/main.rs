@@ -73,7 +73,7 @@ async fn main() {
 
 fn metrics_endpoint() -> String {
     iproduct!(IP::iter(), Table::iter())
-        .map(|(ip, table)| format_metrics(&ip, parse_stats(collect_stats(&ip, &table))))
+        .map(|(ip, table)| format_metrics(&ip, &table, parse_stats(collect_stats(&ip, &table))))
         .join("\n")
 }
 
@@ -117,11 +117,11 @@ fn parse_stats(iptables: String) -> HashMap<String, (i64, i64)> {
         })
 }
 
-fn format_metrics(ip_version: &IP, data: HashMap<String, (i64, i64)>) -> String {
+fn format_metrics(ip_version: &IP, table: &Table, data: HashMap<String, (i64, i64)>) -> String {
     let line = |measure, rule, value| {
         format!(
-            r#"iptables_{}{{ip_version="{}",rule="{}"}} {}"#,
-            measure, ip_version, rule, value
+            r#"iptables_{}{{ip_version="{}",table="{}",rule="{}"}} {}"#,
+            measure, ip_version, table, rule, value
         )
     };
 
