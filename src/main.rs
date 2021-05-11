@@ -4,20 +4,21 @@ use itertools::Itertools;
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::collections::HashMap;
-use std::fmt;
 use std::net::SocketAddr;
 use std::process::Command;
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter};
 use warp::Filter;
 
-#[derive(Clone, EnumIter)]
+#[derive(Clone, Display, EnumIter)]
 enum IP {
+    #[strum(serialize = "4")]
     IPv4,
+    #[strum(serialize = "6")]
     IPv6,
 }
 
-#[derive(Clone, EnumIter, Display)]
+#[derive(Clone, Display, EnumIter)]
 #[strum(serialize_all = "snake_case")]
 enum Table {
     Filter,
@@ -25,15 +26,6 @@ enum Table {
     Nat,
     Raw,
     Security,
-}
-
-impl fmt::Display for IP {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            IP::IPv4 => write!(f, "4"),
-            IP::IPv6 => write!(f, "6"),
-        }
-    }
 }
 
 #[tokio::main]
