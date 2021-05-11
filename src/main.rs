@@ -1,25 +1,31 @@
 use clap::{App, Arg};
+use itertools::iproduct;
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::collections::HashMap;
-use std::fmt;
 use std::net::SocketAddr;
 use std::process::Command;
+use strum::IntoEnumIterator;
+use strum_macros::{Display, EnumIter};
 use warp::Filter;
 
+#[derive(Clone, Display, EnumIter)]
 enum IP {
-    IPv4 = 4,
-    IPv6 = 6,
+    #[strum(serialize = "4")]
+    IPv4,
+    #[strum(serialize = "6")]
+    IPv6,
 }
 
-impl fmt::Display for IP {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            IP::IPv4 => write!(f, "4"),
-            IP::IPv6 => write!(f, "6"),
-        }
-    }
+#[derive(Clone, Display, EnumIter)]
+#[strum(serialize_all = "snake_case")]
+enum Table {
+    Filter,
+    Mangle,
+    Nat,
+    Raw,
+    Security,
 }
 
 #[tokio::main]
@@ -66,18 +72,20 @@ async fn main() {
 }
 
 fn metrics_endpoint() -> String {
-    let ipv4 = format_metrics(IP::IPv4, parse_stats(collect_stats(IP::IPv4)));
-    let ipv6 = format_metrics(IP::IPv6, parse_stats(collect_stats(IP::IPv6)));
-    format!("{}\n{}", ipv4, ipv6)
+    iproduct!(IP::iter(), Table::iter())
+        .map(|(ip, table)| format_metrics(&ip, parse_stats(collect_stats(&ip, &table))))
+        .join("\n")
 }
 
-fn collect_stats(ip_version: IP) -> String {
+fn collect_stats(ip_version: &IP, table: &Table) -> String {
     let executable = match ip_version {
         IP::IPv4 => "iptables",
         IP::IPv6 => "ip6tables",
     };
 
     let cmd = Command::new(executable)
+        .arg("-t")
+        .arg(table.to_string())
         .arg("-xnvL")
         .output()
         .expect("failed to query iptables stats");
@@ -109,7 +117,7 @@ fn parse_stats(iptables: String) -> HashMap<String, (i64, i64)> {
         })
 }
 
-fn format_metrics(ip_version: IP, data: HashMap<String, (i64, i64)>) -> String {
+fn format_metrics(ip_version: &IP, data: HashMap<String, (i64, i64)>) -> String {
     let line = |measure, rule, value| {
         format!(
             r#"iptables_{}{{ip_version="{}",rule="{}"}} {}"#,
