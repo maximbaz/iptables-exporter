@@ -1,4 +1,5 @@
 use clap::{App, Arg};
+use enum_iterator::IntoEnumIterator;
 use itertools::iproduct;
 use itertools::Itertools;
 use lazy_static::lazy_static;
@@ -9,7 +10,7 @@ use std::net::SocketAddr;
 use std::process::Command;
 use warp::Filter;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, IntoEnumIterator)]
 enum IP {
     IPv4 = 4,
     IPv6 = 6,
@@ -69,14 +70,14 @@ async fn main() {
 
 fn metrics_endpoint() -> String {
     iproduct!(
-        vec![IP::IPv4, IP::IPv6],
+        IP::into_enum_iter(),
         vec!["filter", "nat", "mangle", "raw", "security"]
     )
-    .map(|(ip, table)| format_metrics(ip, parse_stats(collect_stats(ip, table))))
+    .map(|(ip, table)| format_metrics(&ip, parse_stats(collect_stats(&ip, table))))
     .join("\n")
 }
 
-fn collect_stats(ip_version: IP, table: &str) -> String {
+fn collect_stats(ip_version: &IP, table: &str) -> String {
     let executable = match ip_version {
         IP::IPv4 => "iptables",
         IP::IPv6 => "ip6tables",
@@ -116,7 +117,7 @@ fn parse_stats(iptables: String) -> HashMap<String, (i64, i64)> {
         })
 }
 
-fn format_metrics(ip_version: IP, data: HashMap<String, (i64, i64)>) -> String {
+fn format_metrics(ip_version: &IP, data: HashMap<String, (i64, i64)>) -> String {
     let line = |measure, rule, value| {
         format!(
             r#"iptables_{}{{ip_version="{}",rule="{}"}} {}"#,
