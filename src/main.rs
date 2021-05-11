@@ -66,7 +66,9 @@ async fn main() {
 }
 
 fn metrics_endpoint() -> String {
-    format_metrics(IP::IPv4, parse_stats(collect_stats(IP::IPv4)))
+    let ipv4 = format_metrics(IP::IPv4, parse_stats(collect_stats(IP::IPv4)));
+    let ipv6 = format_metrics(IP::IPv6, parse_stats(collect_stats(IP::IPv6)));
+    format!("{}\n{}", ipv4, ipv6)
 }
 
 fn collect_stats(ip_version: IP) -> String {
