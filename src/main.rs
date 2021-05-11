@@ -1,4 +1,5 @@
 use clap::{App, Arg};
+use itertools::iproduct;
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -8,6 +9,7 @@ use std::net::SocketAddr;
 use std::process::Command;
 use warp::Filter;
 
+#[derive(Clone, Copy)]
 enum IP {
     IPv4 = 4,
     IPv6 = 6,
@@ -66,19 +68,24 @@ async fn main() {
 }
 
 fn metrics_endpoint() -> String {
-    let ipv4 = format_metrics(IP::IPv4, parse_stats(collect_stats(IP::IPv4)));
-    let ipv6 = format_metrics(IP::IPv6, parse_stats(collect_stats(IP::IPv6)));
-    format!("{}\n{}", ipv4, ipv6)
+    iproduct!(
+        vec![IP::IPv4, IP::IPv6],
+        vec!["filter", "nat", "mangle", "raw", "security"]
+    )
+    .map(|(ip, table)| format_metrics(ip, parse_stats(collect_stats(ip, table))))
+    .join("\n")
 }
 
-fn collect_stats(ip_version: IP) -> String {
+fn collect_stats(ip_version: IP, table: &str) -> String {
     let executable = match ip_version {
         IP::IPv4 => "iptables",
         IP::IPv6 => "ip6tables",
     };
 
+    let args = format!("-t {} -xnvL", table.to_string());
+
     let cmd = Command::new(executable)
-        .arg("-xnvL")
+        .arg(args)
         .output()
         .expect("failed to query iptables stats");
 
