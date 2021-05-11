@@ -12,8 +12,18 @@ use warp::Filter;
 
 #[derive(Clone, IntoEnumIterator)]
 enum IP {
-    IPv4 = 4,
-    IPv6 = 6,
+    IPv4,
+    IPv6,
+}
+
+#[allow(non_camel_case_types)]
+#[derive(Clone, IntoEnumIterator)]
+enum Table {
+    filter,
+    mangle,
+    nat,
+    raw,
+    security,
 }
 
 impl fmt::Display for IP {
@@ -22,6 +32,12 @@ impl fmt::Display for IP {
             IP::IPv4 => write!(f, "4"),
             IP::IPv6 => write!(f, "6"),
         }
+    }
+}
+
+impl fmt::Display for Table {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self)
     }
 }
 
@@ -69,24 +85,21 @@ async fn main() {
 }
 
 fn metrics_endpoint() -> String {
-    iproduct!(
-        IP::into_enum_iter(),
-        vec!["filter", "nat", "mangle", "raw", "security"]
-    )
-    .map(|(ip, table)| format_metrics(&ip, parse_stats(collect_stats(&ip, table))))
-    .join("\n")
+    iproduct!(IP::into_enum_iter(), Table::into_enum_iter())
+        .map(|(ip, table)| format_metrics(&ip, parse_stats(collect_stats(&ip, &table))))
+        .join("\n")
 }
 
-fn collect_stats(ip_version: &IP, table: &str) -> String {
+fn collect_stats(ip_version: &IP, table: &Table) -> String {
     let executable = match ip_version {
         IP::IPv4 => "iptables",
         IP::IPv6 => "ip6tables",
     };
 
-    let args = format!("-t {} -xnvL", table.to_string());
-
     let cmd = Command::new(executable)
-        .arg(args)
+        .arg("-t")
+        .arg(table.to_string())
+        .arg("-xnvL")
         .output()
         .expect("failed to query iptables stats");
 
