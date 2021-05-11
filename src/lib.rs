@@ -1,14 +1,15 @@
-use itertools::iproduct;
-use itertools::Itertools;
+use itertools::{iproduct, Itertools};
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::collections::HashSet;
-use std::hash::{Hash, Hasher};
-use std::process::Command;
+use std::{
+    collections::HashSet,
+    hash::{Hash, Hasher},
+    process::Command,
+};
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter};
 
-#[derive(Clone, Debug, Display, EnumIter, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Display, EnumIter, Hash, PartialEq)]
 enum IP {
     #[strum(serialize = "4")]
     IPv4,
@@ -16,7 +17,7 @@ enum IP {
     IPv6,
 }
 
-#[derive(Clone, Debug, Display, EnumIter, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Display, EnumIter, Hash, PartialEq)]
 #[strum(serialize_all = "snake_case")]
 enum Table {
     Filter,
