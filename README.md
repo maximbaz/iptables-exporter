@@ -21,7 +21,7 @@ iptables -A INPUT -i lo -m comment --comment "iptables-exporter loopback" -j ACC
 Then run the binary:
 
 ```sh
-# iptables-exporter
+$ iptables-exporter
 ```
 
 Or in Docker:
@@ -64,7 +64,7 @@ iptables_packets{ip_version="4",table="filter",chain="INPUT",rule="loopback"} 10
 Bind address and port are configurable with CLI arguments, e.g.:
 
 ```sh
-# iptables-exporter --address 192.168.0.1 --port 12345
+$ iptables-exporter --address 192.168.0.1 --port 12345
 ```
 
 ## Related projects
