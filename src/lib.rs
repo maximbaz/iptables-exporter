@@ -2,6 +2,7 @@ use itertools::{iproduct, Itertools};
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::{
+    cmp::Ordering,
     collections::HashSet,
     hash::{Hash, Hasher},
     process::Command,
@@ -47,8 +48,19 @@ impl PartialEq for Rule {
     }
 }
 
+impl PartialOrd for Rule {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 impl Eq for Rule {}
 
+impl Ord for Rule {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.name.cmp(&other.name)
+    }
+}
 impl Hash for Rule {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.ip.hash(state);
@@ -57,17 +69,30 @@ impl Hash for Rule {
     }
 }
 
-impl Rule {
-    fn merge(self, other: &Self) -> Self {
-        Self {
-            ip: self.ip,
-            table: self.table,
-            name: self.name,
-            stats: Stats {
-                bytes: self.stats.bytes + other.stats.bytes,
-                packets: self.stats.packets + other.stats.packets,
-            },
-        }
+trait Squash {
+    fn squash(&mut self) -> Vec<Rule>;
+}
+
+impl<T: Iterator<Item = Rule>> Squash for T {
+    fn squash(&mut self) -> Vec<Rule> {
+        self.fold(HashSet::<Rule>::new(), |mut acc, val| {
+            acc.replace(match acc.get(&val) {
+                None => val,
+                Some(other) => Rule {
+                    ip: val.ip,
+                    table: val.table,
+                    name: val.name,
+                    stats: Stats {
+                        bytes: val.stats.bytes + other.stats.bytes,
+                        packets: val.stats.packets + other.stats.packets,
+                    },
+                },
+            });
+            acc
+        })
+        .into_iter()
+        .sorted()
+        .collect()
     }
 }
 
@@ -76,15 +101,7 @@ pub fn metrics_endpoint() -> String {
         iproduct!(IP::iter(), Table::iter())
             .map(|(ip, table)| parse_stats(&ip, &table, collect_stats(&ip, &table)))
             .flatten()
-            .fold(HashSet::new(), |mut acc, val| {
-                acc.insert(match acc.get(&val) {
-                    None => val,
-                    Some(other) => val.merge(other),
-                });
-                acc
-            })
-            .into_iter()
-            .collect(),
+            .squash(),
     )
 }
 
@@ -244,16 +261,23 @@ Chain OUTPUT (policy ACCEPT 227941 packets, 57081722 bytes)
     }
 
     #[test]
-    fn test_rule_merge() {
+    fn test_rule_squash() {
         assert_eq!(
-            rule(IP::IPv4, Table::Mangle, "aaa", 100, 200),
-            rule(IP::IPv4, Table::Mangle, "aaa", 50, 120).merge(&rule(
-                IP::IPv4,
-                Table::Mangle,
-                "aaa",
-                50,
-                80
-            ))
+            vec![
+                rule(IP::IPv4, Table::Mangle, "aaa", 100, 200),
+                rule(IP::IPv4, Table::Filter, "bbb", 10, 250),
+                rule(IP::IPv4, Table::Security, "ccc", 1, 1),
+            ],
+            vec![
+                rule(IP::IPv4, Table::Filter, "bbb", 0, 0),
+                rule(IP::IPv4, Table::Security, "ccc", 1, 1),
+                rule(IP::IPv4, Table::Mangle, "aaa", 0, 0),
+                rule(IP::IPv4, Table::Mangle, "aaa", 50, 120),
+                rule(IP::IPv4, Table::Filter, "bbb", 10, 250),
+                rule(IP::IPv4, Table::Mangle, "aaa", 50, 80)
+            ]
+            .into_iter()
+            .squash()
         );
     }
 
