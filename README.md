@@ -37,6 +37,22 @@ cap_add:
 
 Finally navigate to `http://127.0.0.1:9119/metrics` to explore your metrics, or point Prometheus to this endpoint.
 
+```sh
+$ curl 127.0.0.1:9119/metrics
+
+# HELP iptables_packets Number of matched packets
+# TYPE iptables_packets counter
+iptables_packets{ip_version="4",table="filter",chain="INPUT",rule="related,established"} 277108
+iptables_packets{ip_version="4",table="filter",chain="INPUT",rule="invalid"} 732
+iptables_packets{ip_version="4",table="filter",chain="INPUT",rule="loopback"} 1198
+
+# HELP iptables_bytes Number of matched bytes
+# TYPE iptables_bytes counter
+iptables_bytes{ip_version="4",table="filter",chain="INPUT",rule="related,established"} 103651838
+iptables_bytes{ip_version="4",table="filter",chain="INPUT",rule="invalid"} 7669
+iptables_packets{ip_version="4",table="filter",chain="INPUT",rule="loopback"} 104737
+```
+
 ## Configuration
 
 Bind address and port are configurable with CLI arguments, e.g.:
