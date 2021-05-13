@@ -31,6 +31,7 @@ enum Table {
 #[derive(Debug)]
 struct Rule {
     name: String,
+    chain: String,
     ip: IP,
     table: Table,
     stats: Stats,
@@ -44,7 +45,10 @@ struct Stats {
 
 impl PartialEq for Rule {
     fn eq(&self, other: &Self) -> bool {
-        self.ip == other.ip && self.table == other.table && self.name == other.name
+        self.ip == other.ip
+            && self.table == other.table
+            && self.chain == other.chain
+            && self.name == other.name
     }
 }
 
@@ -58,13 +62,16 @@ impl Eq for Rule {}
 
 impl Ord for Rule {
     fn cmp(&self, other: &Self) -> Ordering {
-        (&self.ip, &self.table, &self.name).cmp(&(&other.ip, &other.table, &other.name))
+        let this = (&self.ip, &self.table, &self.chain, &self.name);
+        let that = (&other.ip, &other.table, &other.chain, &other.name);
+        this.cmp(&that)
     }
 }
 impl Hash for Rule {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.ip.hash(state);
         self.table.hash(state);
+        self.chain.hash(state);
         self.name.hash(state);
     }
 }
@@ -82,6 +89,7 @@ impl<T: Iterator<Item = Rule>> Squash for T {
                     ip: val.ip,
                     table: val.table,
                     name: val.name,
+                    chain: val.chain,
                     stats: Stats {
                         bytes: val.stats.bytes + other.stats.bytes,
                         packets: val.stats.packets + other.stats.packets,
@@ -128,28 +136,38 @@ fn parse_stats(ip: &IP, table: &Table, stats: String) -> Vec<Rule> {
     }
 
     stats
-        .lines()
-        .filter(|line| line.contains("iptables-exporter"))
-        .map(|line| {
-            let caps = RE.captures(line).expect("unexpected line from iptables");
-            Rule {
-                ip: ip.clone(),
-                table: table.clone(),
-                name: caps[3].to_string(),
-                stats: Stats {
-                    packets: caps[1].parse().expect("failed to parse packets"),
-                    bytes: caps[2].parse().expect("failed to parse bytes"),
-                },
-            }
+        .split("\n\n")
+        .map(|block| {
+            let chain = block
+                .split_whitespace()
+                .nth(1)
+                .expect("failed to parse chain");
+            block
+                .lines()
+                .filter(|line| line.contains("iptables-exporter"))
+                .map(move |line| {
+                    let caps = RE.captures(line).expect("unexpected line from iptables");
+                    Rule {
+                        ip: ip.clone(),
+                        table: table.clone(),
+                        name: caps[3].to_string(),
+                        chain: chain.to_string(),
+                        stats: Stats {
+                            packets: caps[1].parse().expect("failed to parse packets"),
+                            bytes: caps[2].parse().expect("failed to parse bytes"),
+                        },
+                    }
+                })
         })
+        .flatten()
         .collect_vec()
 }
 
 fn format_metrics(data: Vec<Rule>) -> String {
     let line = |measure, rule: &Rule, value| {
         format!(
-            r#"iptables_{}{{ip_version="{}",table="{}",rule="{}"}} {}"#,
-            measure, rule.ip, rule.table, rule.name, value
+            r#"iptables_{}{{ip_version="{}",table="{}",chain="{}",rule="{}"}} {}"#,
+            measure, rule.ip, rule.table, rule.chain, rule.name, value
         )
     };
 
@@ -176,10 +194,11 @@ fn format_metrics(data: Vec<Rule>) -> String {
 mod test {
     use super::*;
 
-    fn rule(ip: IP, table: Table, name: &str, packets: u128, bytes: u128) -> Rule {
+    fn rule(ip: IP, table: Table, chain: &str, name: &str, packets: u128, bytes: u128) -> Rule {
         Rule {
             ip,
             table,
+            chain: chain.to_string(),
             name: name.to_string(),
             stats: Stats { packets, bytes },
         }
@@ -204,12 +223,16 @@ Chain ICMP (4 references)
        0        0 DROP       all  --  *      *       0.0.0.0/0            0.0.0.0/0            /* iptables-exporter drop icmp */
 ".to_string();
 
+        let r = |chain, name, packets, bytes| {
+            rule(IP::IPv4, Table::Filter, chain, name, packets, bytes)
+        };
+
         let expected = vec![
-            rule(IP::IPv4, Table::Filter, "established", 35169773, 6943845843),
-            rule(IP::IPv4, Table::Filter, "dns", 1185, 66020),
-            rule(IP::IPv4, Table::Filter, "dns", 270644, 20134629),
-            rule(IP::IPv4, Table::Filter, "icmp", 1269, 102634),
-            rule(IP::IPv4, Table::Filter, "drop icmp", 0, 0),
+            r("DOCKER-USER", "established", 35169773, 6943845843),
+            r("DOCKER-USER", "dns", 1185, 66020),
+            r("DOCKER-USER", "dns", 270644, 20134629),
+            r("ICMP", "icmp", 1269, 102634),
+            r("ICMP", "drop icmp", 0, 0),
         ];
         assert_eq!(expected, parse_stats(&IP::IPv4, &Table::Filter, input));
     }
@@ -229,52 +252,61 @@ Chain OUTPUT (policy ACCEPT 227941 packets, 57081722 bytes)
     pkts      bytes target     prot opt in     out     source               destination
 ".to_string();
 
+        let r = |chain, name, packets, bytes| {
+            rule(IP::IPv6, Table::Filter, chain, name, packets, bytes)
+        };
+
         let expected = vec![
-            rule(IP::IPv6, Table::Filter, "related", 50330, 14370092),
-            rule(IP::IPv6, Table::Filter, "dns", 1899, 140244),
-            rule(IP::IPv6, Table::Filter, "dns", 91342, 8504843),
+            r("INPUT", "related", 50330, 14370092),
+            r("INPUT", "dns", 1899, 140244),
+            r("INPUT", "dns", 91342, 8504843),
         ];
         assert_eq!(expected, parse_stats(&IP::IPv6, &Table::Filter, input));
     }
 
     #[test]
     fn test_rule_eq() {
-        assert_eq!(
-            true,
-            rule(IP::IPv4, Table::Nat, "aaa", 1, 1).eq(&rule(IP::IPv4, Table::Nat, "aaa", 2, 3))
-        );
+        let rule1 = rule(IP::IPv4, Table::Nat, "chain1", "rule1", 1, 1);
+        let rule2 = rule(IP::IPv4, Table::Nat, "chain1", "rule1", 2, 3);
+        assert_eq!(true, rule1.eq(&rule2));
 
-        assert_eq!(
-            false,
-            rule(IP::IPv4, Table::Nat, "aaa", 1, 1).eq(&rule(IP::IPv6, Table::Nat, "aaa", 1, 1))
-        );
+        let rule1 = rule(IP::IPv4, Table::Nat, "chain1", "rule1", 1, 1);
+        let rule2 = rule(IP::IPv6, Table::Nat, "chain1", "rule1", 1, 1);
+        assert_eq!(false, rule1.eq(&rule2));
 
-        assert_eq!(
-            false,
-            rule(IP::IPv4, Table::Nat, "aaa", 1, 1).eq(&rule(IP::IPv4, Table::Filter, "aaa", 1, 1))
-        );
+        let rule1 = rule(IP::IPv4, Table::Nat, "chain1", "rule1", 1, 1);
+        let rule2 = rule(IP::IPv4, Table::Filter, "chain1", "rule1", 1, 1);
+        assert_eq!(false, rule1.eq(&rule2));
 
-        assert_eq!(
-            false,
-            rule(IP::IPv4, Table::Nat, "aaa", 1, 1).eq(&rule(IP::IPv4, Table::Nat, "bbb", 1, 1))
-        );
+        let rule1 = rule(IP::IPv4, Table::Nat, "chain1", "rule1", 1, 1);
+        let rule2 = rule(IP::IPv4, Table::Nat, "chain1", "rule2", 1, 1);
+        assert_eq!(false, rule1.eq(&rule2));
+
+        let rule1 = rule(IP::IPv4, Table::Nat, "chain1", "rule1", 1, 1);
+        let rule2 = rule(IP::IPv4, Table::Nat, "chain2", "rule1", 1, 1);
+        assert_eq!(false, rule1.eq(&rule2));
     }
 
     #[test]
     fn test_rule_squash() {
         assert_eq!(
             vec![
-                rule(IP::IPv4, Table::Filter, "bbb", 10, 250),
-                rule(IP::IPv4, Table::Security, "aaa", 100, 200),
-                rule(IP::IPv6, Table::Nat, "ccc", 1, 1),
+                rule(IP::IPv4, Table::Filter, "chain1", "rule2", 10, 250),
+                rule(IP::IPv4, Table::Filter, "chain2", "rule2", 1, 2),
+                rule(IP::IPv4, Table::Mangle, "chain1", "rule1", 3, 7),
+                rule(IP::IPv4, Table::Security, "chain1", "rule1", 100, 200),
+                rule(IP::IPv6, Table::Nat, "chain1", "rule3", 1, 1),
             ],
             vec![
-                rule(IP::IPv4, Table::Filter, "bbb", 0, 0),
-                rule(IP::IPv6, Table::Nat, "ccc", 1, 1),
-                rule(IP::IPv4, Table::Security, "aaa", 0, 0),
-                rule(IP::IPv4, Table::Security, "aaa", 50, 120),
-                rule(IP::IPv4, Table::Filter, "bbb", 10, 250),
-                rule(IP::IPv4, Table::Security, "aaa", 50, 80)
+                rule(IP::IPv4, Table::Filter, "chain1", "rule2", 0, 0),
+                rule(IP::IPv6, Table::Nat, "chain1", "rule3", 1, 1),
+                rule(IP::IPv4, Table::Security, "chain1", "rule1", 0, 0),
+                rule(IP::IPv4, Table::Filter, "chain2", "rule2", 1, 2),
+                rule(IP::IPv4, Table::Security, "chain1", "rule1", 50, 120),
+                rule(IP::IPv4, Table::Mangle, "chain1", "rule1", 1, 5),
+                rule(IP::IPv4, Table::Filter, "chain1", "rule2", 10, 250),
+                rule(IP::IPv4, Table::Mangle, "chain1", "rule1", 2, 2),
+                rule(IP::IPv4, Table::Security, "chain1", "rule1", 50, 80)
             ]
             .into_iter()
             .squash()
@@ -286,20 +318,20 @@ Chain OUTPUT (policy ACCEPT 227941 packets, 57081722 bytes)
         let expected = r#"
 # HELP iptables_packets Number of matched packets
 # TYPE iptables_packets counter
-iptables_packets{ip_version="4",table="filter",rule="aaa"} 10
-iptables_packets{ip_version="4",table="raw",rule="bbb"} 2000
-iptables_packets{ip_version="6",table="mangle",rule="ccc"} 0
+iptables_packets{ip_version="4",table="filter",chain="chain1",rule="rule1"} 10
+iptables_packets{ip_version="4",table="raw",chain="chain2",rule="rule2"} 2000
+iptables_packets{ip_version="6",table="mangle",chain="chain3",rule="rule3"} 0
 
 # HELP iptables_bytes Number of matched bytes
 # TYPE iptables_bytes counter
-iptables_bytes{ip_version="4",table="filter",rule="aaa"} 70
-iptables_bytes{ip_version="4",table="raw",rule="bbb"} 7000
-iptables_bytes{ip_version="6",table="mangle",rule="ccc"} 17
+iptables_bytes{ip_version="4",table="filter",chain="chain1",rule="rule1"} 70
+iptables_bytes{ip_version="4",table="raw",chain="chain2",rule="rule2"} 7000
+iptables_bytes{ip_version="6",table="mangle",chain="chain3",rule="rule3"} 17
 "#;
         let rules = vec![
-            rule(IP::IPv4, Table::Filter, "aaa", 10, 70),
-            rule(IP::IPv4, Table::Raw, "bbb", 2000, 7000),
-            rule(IP::IPv6, Table::Mangle, "ccc", 0, 17),
+            rule(IP::IPv4, Table::Filter, "chain1", "rule1", 10, 70),
+            rule(IP::IPv4, Table::Raw, "chain2", "rule2", 2000, 7000),
+            rule(IP::IPv6, Table::Mangle, "chain3", "rule3", 0, 17),
         ];
 
         assert_eq!(expected, format_metrics(rules));
