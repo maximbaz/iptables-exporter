@@ -1,0 +1,50 @@
+# iptables-exporter
+
+Prometheus exporter for `iptables` that collects number of packets and bytes that matched marked rules.
+
+## Usage
+
+First mark rules that you are interested to monitor with `iptables-exporter` comment:
+
+```sh
+iptables -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment "iptables-exporter related,established" -j ACCEPT
+iptables -A INPUT -m conntrack --ctstate INVALID -m comment --comment "iptables-exporter invalid" -j DROP
+iptables -A INPUT -i lo -m comment --comment "iptables-exporter loopback" -j ACCEPT
+```
+
+Then run the binary:
+
+```sh
+# iptables-exporter
+```
+
+Or in Docker:
+
+```sh
+$ docker run --net=host --cap-add=NET_ADMIN maximbaz/iptables-exporter
+```
+
+Or in `docker-compose`:
+
+```yaml
+iptables-exporter:
+image: maximbaz/iptables-exporter
+restart: always
+network_mode: host
+cap_add:
+  - NET_ADMIN
+```
+
+Finally navigate to `http://127.0.0.1:9119/metrics` to explore your metrics, or point Prometheus to this endpoint.
+
+## Configuration
+
+Bind address and port are configurable with CLI arguments, e.g.:
+
+```sh
+# iptables-exporter --address 192.168.0.1 --port 12345
+```
+
+## Related projects
+
+- [madron/iptables-exporter](https://github.com/madron/iptables-exporter) - heavily inspired this project, but (at the time of writing) used a quite buggy iptables parsing library.
