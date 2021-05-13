@@ -2,6 +2,12 @@
 
 Prometheus exporter for `iptables` that collects number of packets and bytes that matched marked rules.
 
+## Installation
+
+Download binary from the latest release on Github, or pull container image `maximbaz/iptables-exporter` from Docker Hub.
+
+Release artifacts are signed with the following PGP key: `8053EB88879A68CB4873D32B011FDC52DA839335`
+
 ## Usage
 
 First mark rules that you are interested to monitor with `iptables-exporter` comment:
