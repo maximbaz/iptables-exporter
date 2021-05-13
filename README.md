@@ -56,7 +56,7 @@ iptables_packets{ip_version="4",table="filter",chain="INPUT",rule="loopback"} 11
 # TYPE iptables_bytes counter
 iptables_bytes{ip_version="4",table="filter",chain="INPUT",rule="related,established"} 103651838
 iptables_bytes{ip_version="4",table="filter",chain="INPUT",rule="invalid"} 7669
-iptables_packets{ip_version="4",table="filter",chain="INPUT",rule="loopback"} 104737
+iptables_bytes{ip_version="4",table="filter",chain="INPUT",rule="loopback"} 104737
 ```
 
 ## Configuration
