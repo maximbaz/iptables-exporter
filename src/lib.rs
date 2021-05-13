@@ -10,7 +10,7 @@ use std::{
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter};
 
-#[derive(Clone, Debug, Display, EnumIter, Hash, PartialEq)]
+#[derive(Clone, Debug, Display, EnumIter, Hash, PartialEq, Eq, PartialOrd, Ord)]
 enum IP {
     #[strum(serialize = "4")]
     IPv4,
@@ -18,7 +18,7 @@ enum IP {
     IPv6,
 }
 
-#[derive(Clone, Debug, Display, EnumIter, Hash, PartialEq)]
+#[derive(Clone, Debug, Display, EnumIter, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[strum(serialize_all = "snake_case")]
 enum Table {
     Filter,
@@ -58,7 +58,7 @@ impl Eq for Rule {}
 
 impl Ord for Rule {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.name.cmp(&other.name)
+        (&self.ip, &self.table, &self.name).cmp(&(&other.ip, &other.table, &other.name))
     }
 }
 impl Hash for Rule {
@@ -264,17 +264,17 @@ Chain OUTPUT (policy ACCEPT 227941 packets, 57081722 bytes)
     fn test_rule_squash() {
         assert_eq!(
             vec![
-                rule(IP::IPv4, Table::Mangle, "aaa", 100, 200),
                 rule(IP::IPv4, Table::Filter, "bbb", 10, 250),
-                rule(IP::IPv4, Table::Security, "ccc", 1, 1),
+                rule(IP::IPv4, Table::Security, "aaa", 100, 200),
+                rule(IP::IPv6, Table::Nat, "ccc", 1, 1),
             ],
             vec![
                 rule(IP::IPv4, Table::Filter, "bbb", 0, 0),
-                rule(IP::IPv4, Table::Security, "ccc", 1, 1),
-                rule(IP::IPv4, Table::Mangle, "aaa", 0, 0),
-                rule(IP::IPv4, Table::Mangle, "aaa", 50, 120),
+                rule(IP::IPv6, Table::Nat, "ccc", 1, 1),
+                rule(IP::IPv4, Table::Security, "aaa", 0, 0),
+                rule(IP::IPv4, Table::Security, "aaa", 50, 120),
                 rule(IP::IPv4, Table::Filter, "bbb", 10, 250),
-                rule(IP::IPv4, Table::Mangle, "aaa", 50, 80)
+                rule(IP::IPv4, Table::Security, "aaa", 50, 80)
             ]
             .into_iter()
             .squash()
